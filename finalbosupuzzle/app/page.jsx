@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { SquareMenu, ImageUp } from "lucide-react";
+import { SquareMenu, ImageUp, Loader2 } from "lucide-react";
 import Autoplay from "embla-carousel-autoplay";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -45,6 +45,7 @@ export default function Home() {
   const [timerActive, setTimerActive] = useState(false);
   const [image, setImage] = useState(false);
   const [leaderboard,setLeaderboard]=useState([])
+  const [uploadbutton,setuploadbutton]=useState(false)
 const [scoreData, setScoreData]=useState({
   name:'',
   score:""
@@ -76,7 +77,6 @@ const [scoreData, setScoreData]=useState({
   useEffect(() => {
     const initialTiles = Array.from({ length: totalTiles }, (_, i) => i);
     setTiles(initialTiles);
-
     const shuffleOnLoad = () => {
       let shuffled = [...initialTiles];
       for (let i = shuffled.length - 1; i > 0; i--) {
@@ -90,7 +90,7 @@ const [scoreData, setScoreData]=useState({
       setTimerActive(true);
     };
 
-    shuffleOnLoad();
+    //shuffleOnLoad();
   }, []);
 
   // Timer logic
@@ -168,19 +168,18 @@ const [scoreData, setScoreData]=useState({
   };
 
   // Check if the puzzle is solved
-  const checkSolved = () => {
-    if (tiles.every((tile, index) => tile === index)) {
+
+  useEffect(() => {
+    if (moves > 0 && tiles.every((tile, index) => tile === index)) {
       setIsSolved(true);
       setTimerActive(false);
-      setScoreData({
-        ...scoreData,
-        score:calculateScore(moves,timeElapsed)
-      })
-      
-      console.log(scoreData,moves,timeElapsed);
-      
+      setScoreData((prevData) => ({
+        ...prevData,
+        score: calculateScore(moves, timeElapsed),
+      }));
     }
-  };
+  }, [tiles]); 
+  
 
   // Handle tile click events
   const handleTileClick = (index) => {
@@ -191,7 +190,7 @@ const [scoreData, setScoreData]=useState({
       setTiles(newTiles);
       setEmptyIndex(index);
       setMoves((prev) => prev + 1);
-      checkSolved();
+
     }
   };
 
@@ -210,7 +209,7 @@ const [scoreData, setScoreData]=useState({
     const{data,error}= await supabase
     .from('leaderboard')
     .insert([{name,score}]);
-
+    setuploadbutton(!uploadbutton)
     if (error) {
       console.error("Error saving score", error.message)
     } else {
@@ -382,7 +381,7 @@ const [scoreData, setScoreData]=useState({
          <div className=" text-white flex flex-col bg-black font-poppins rounded w-[300px] h-[300px] absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2  p-4 z-10  ">
           <div className="flex flex-col gap-2">
           <div className="text-xl font-semibold ">Congratulations🎊</div>
-          <div className=" text-xs text-gray-500">You solved the puzzle in 1min 10sec with 32 moves</div>
+          <div className=" text-xs text-gray-500">You solved the puzzle in {timeElapsed}sec with {moves} moves</div>
           </div>
           <div className="text-gray-700 text-sm">you scored {scoreData.score===''?0:scoreData.score}</div>
           <div className="my-3 text-xs">Type in your name and upload your score to see where you rank among other finalbosu community members </div>
@@ -390,7 +389,8 @@ const [scoreData, setScoreData]=useState({
               <label htmlFor="name" className="text-sm font-bold">Name <span className="text-gray-700 text-xs font-thin">(twitter username)</span></label>
               <input className="bg-transparent border rounded border-gray-700 outline-none p-2 text-xs" type="text" name="name" value={scoreData.name} onChange={handlechange} />
             </div>
-            <Button className='self-end mt-auto' onClick={()=>saveScore(scoreData.name,scoreData.score)}>Upload</Button>
+            <Button className='self-end mt-auto' disabled={uploadbutton} onClick={()=>saveScore(scoreData.name,scoreData.score)}>{!uploadbutton?'Upload':<><Loader2 className="animate-spin" />
+              Please wait</>}</Button>
          </div>
           )}
         </div>
