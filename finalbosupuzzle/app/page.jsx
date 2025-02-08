@@ -90,7 +90,7 @@ const [scoreData, setScoreData]=useState({
       setTimerActive(true);
     };
 
-   // shuffleOnLoad();
+    shuffleOnLoad();
   }, []);
 
   // Timer logic
