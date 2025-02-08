@@ -130,13 +130,36 @@ const [scoreData, setScoreData]=useState({
   }, [leaderboard])
   
   // Shuffle tiles manually
+  const isSolvable = (tiles) => {
+    let inversions = 0;
+    for (let i = 0; i < tiles.length - 1; i++) {
+      for (let j = i + 1; j < tiles.length; j++) {
+        if (tiles[i] !== totalTiles - 1 && tiles[j] !== totalTiles - 1 && tiles[i] > tiles[j]) {
+          inversions++;
+        }
+      }
+    }
+  
+    if (gridSize % 2 !== 0) {
+      return inversions % 2 === 0; // Odd grid: solvable if inversions are even
+    } else {
+      const emptyRow = Math.floor(emptyIndex / gridSize);
+      return (inversions + emptyRow) % 2 === 0; // Even grid: check row parity
+    }
+  };
+  
   const shuffleTiles = () => {
     setIsSolved(false);
-    let shuffled = [...tiles];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
+    let shuffled;
+  
+    do {
+      shuffled = Array.from({ length: totalTiles }, (_, i) => i);
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+    } while (!isSolvable(shuffled)); // Keep shuffling until we get a solvable one
+  
     setTiles(shuffled);
     setEmptyIndex(shuffled.indexOf(totalTiles - 1));
     setMoves(0);
