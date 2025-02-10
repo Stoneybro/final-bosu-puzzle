@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Menu, ImageUp, Loader2, SquareX } from "lucide-react";
@@ -12,11 +12,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -44,8 +40,14 @@ export default function Home() {
   const [scoreData, setScoreData] = useState({ name: "", score: "" });
   // New state for the win modal
   const [showModal, setShowModal] = useState(false);
+  // NEW: State to hold community images (URLs)
+  const [communityImages, setCommunityImages] = useState([]);
+  // NEW: State to indicate upload progress
+  const [isUploading, setIsUploading] = useState(false);
+  // NEW: A ref to our hidden file input
+  const fileInputRef = useRef(null);
 
-  // Image and container dimensions
+  // Image and container dimensions for the puzzle game
   const imageWidth = 600;
   const imageHeight = 800;
   const aspectRatio = imageWidth / imageHeight;
@@ -123,6 +125,180 @@ export default function Home() {
     };
     fetchLeaderboard();
   }, []);
+
+  // -------------------------------
+  // NEW: Functions to handle community image upload and fetching
+  // -------------------------------
+
+  // Function to fetch the list of uploaded images from Supabase Storage
+  const fetchCommunityImages = async () => {
+    try {
+      console.log('Fetching community images...');
+      // Fetch the list of files in the bucket
+      const { data: fileList, error } = await supabase.storage
+        .from("community-images")
+        .list("", {
+          limit: 3,
+          offset: 0,
+          sortBy: { column: "created_at", order: "desc" },
+        });
+  
+      if (error) {
+        console.error("Error fetching community images:", error.message);
+        return;
+      }
+  
+      if (!fileList || fileList.length === 0) {
+        console.warn("No images found in the bucket.");
+        setCommunityImages([]);
+        return;
+      }
+  
+      // Generate public URLs for each file
+      const urls = fileList.map((file) => {
+        const { data: publicUrlData, error: publicUrlError } = supabase.storage
+          .from("community-images")
+          .getPublicUrl(file.name);
+  
+        if (publicUrlError) {
+          console.error("Error generating public URL:", publicUrlError.message);
+          return null;
+        }
+  
+        return publicUrlData.publicUrl;
+      });
+  
+      // Filter out any null URLs
+      const validUrls = urls.filter((url) => url !== null);
+  
+      console.log("Fetched URLs:", validUrls);
+      setCommunityImages(validUrls);
+    } catch (err) {
+      console.error("Unexpected error fetching images:", err);
+    }
+  };
+  
+  
+
+  // Call fetchCommunityImages on mount so the carousel shows images on page load
+  useEffect(() => {
+    fetchCommunityImages();
+  }, []);
+
+  // Function to crop an image file to 300x400 (center crop)
+  const cropImage = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        // Use the native Image constructor via window.Image
+        const img = new window.Image();
+        img.onload = () => {
+          // Determine cropping dimensions (center crop)
+          const targetWidth = 300;
+          const targetHeight = 400;
+          const targetRatio = targetWidth / targetHeight; // 0.75
+          let cropWidth, cropHeight, offsetX, offsetY;
+          const imageRatio = img.width / img.height;
+          if (imageRatio > targetRatio) {
+            // Image is wider than desired ratio; crop the width
+            cropHeight = img.height;
+            cropWidth = img.height * targetRatio;
+            offsetX = (img.width - cropWidth) / 2;
+            offsetY = 0;
+          } else {
+            // Image is taller than desired ratio; crop the height
+            cropWidth = img.width;
+            cropHeight = img.width / targetRatio;
+            offsetX = 0;
+            offsetY = (img.height - cropHeight) / 2;
+          }
+          // Create a canvas with the target dimensions
+          const canvas = document.createElement("canvas");
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext("2d");
+          // Draw the cropped and scaled image
+          ctx.drawImage(
+            img,
+            offsetX,
+            offsetY,
+            cropWidth,
+            cropHeight,
+            0,
+            0,
+            targetWidth,
+            targetHeight
+          );
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(blob);
+              } else {
+                reject(new Error("Canvas is empty"));
+              }
+            },
+            file.type,
+            1
+          );
+        };
+        img.onerror = (err) => reject(err);
+        img.src = e.target.result;
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  
+
+  // Function to upload the (cropped) image to Supabase Storage
+  const uploadImage = async (file) => {
+
+
+    try {
+      setIsUploading(true);
+      const croppedBlob = await cropImage(file);
+      // Create a unique filename (using timestamp)
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${Date.now()}.${fileExt}`;
+      const { data, error } = await supabase.storage
+        .from("community-images")
+        .upload(fileName, croppedBlob, {
+          contentType: file.type,
+        });
+      if (error) {
+        console.error("Error uploading image:", error.message);
+      } else {
+        // After a successful upload, refresh the list of images
+        console.log('worked');
+        
+        fetchCommunityImages();
+      }
+    } catch (error) {
+      console.error("Upload failed:", error);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Handler for when a file is selected via the hidden input
+  const handleFileChange = async (e) => {
+
+    
+    const file = e.target.files[0];
+    if (file) {
+      await uploadImage(file);
+    }
+    // Reset the input value so the same file can be re-uploaded if needed
+    e.target.value = "";
+  };
+
+  // Handler to trigger the file input click
+  const handleUploadButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  // -------------------------------
+  // End of upload functions
+  // -------------------------------
 
   // Check if the puzzle is solvable
   const isSolvable = (tilesArray) => {
@@ -221,31 +397,35 @@ export default function Home() {
   const handleModalCancel = () => {
     setShowModal(false);
   };
-
+  console.log(communityImages);
+  
   return (
-    <div className="relative min-h-screen text-[#e61949] bg-black bg-bluenoise-layer flex justify-center items-center">
+    <div className='relative min-h-screen text-[#e61949] bg-black bg-bluenoise-layer flex justify-center items-center'>
       {/* Main container */}
-      <div className="flex flex-col items-center justify-center">
+      <div className='flex flex-col items-center justify-center'>
         {/* Title Section */}
-        <div className="text-7xl font-anton">FINALBOSU</div>
-        <h1 className="text-sm font-poppins italic">Sliding Puzzle Game</h1>
+        <div className='text-7xl font-anton'>FINALBOSU</div>
+        <h1 className='text-sm font-poppins italic'>Sliding Puzzle Game</h1>
 
         {/* Stats Section */}
-        <div className="flex justify-between w-64 mb-4 font-poppins">
-          <p className="text-sm">Moves: {moves}</p>
-          <p className="text-sm">Time: {timeElapsed}s</p>
+        <div className='flex justify-between w-64 mb-4 font-poppins'>
+          <p className='text-sm'>Moves: {moves}</p>
+          <p className='text-sm'>Time: {timeElapsed}s</p>
         </div>
 
         {/* Puzzle Grid */}
         <div
-          className="relative bg-gray-800 border overflow-hidden border-white"
-          style={{ width: `${containerWidth}px`, height: `${containerHeight}px` }}
+          className='relative bg-gray-800 border overflow-hidden border-white'
+          style={{
+            width: `${containerWidth}px`,
+            height: `${containerHeight}px`,
+          }}
         >
           {/* Original Image Overlay */}
           <Image
-            src="/puzzle-image.jpg"
+            src='/puzzle-image.jpg'
             fill
-            alt="Puzzle overlay"
+            alt='Puzzle overlay'
             className={`z-10 ${image ? "block" : "hidden"}`}
           />
 
@@ -257,7 +437,9 @@ export default function Home() {
               <div
                 key={index}
                 className={`absolute ${
-                  tile === totalTiles - 1 ? "opacity-0 cursor-default" : "cursor-pointer"
+                  tile === totalTiles - 1
+                    ? "opacity-0 cursor-default"
+                    : "cursor-pointer"
                 }`}
                 onClick={() => handleTileClick(index)}
                 style={{
@@ -265,7 +447,8 @@ export default function Home() {
                   height: `${tileHeight}px`,
                   left: `${left}px`,
                   top: `${top}px`,
-                  backgroundImage: tile !== totalTiles - 1 ? "url('/puzzle-image.jpg')" : "",
+                  backgroundImage:
+                    tile !== totalTiles - 1 ? "url('/puzzle-image.jpg')" : "",
                   backgroundSize: `${gridSize * 100}% ${gridSize * 100}%`,
                   backgroundPosition: `${
                     (tile % gridSize) * (100 / (gridSize - 1))
@@ -277,35 +460,31 @@ export default function Home() {
         </div>
 
         {/* Control Buttons */}
-        <div className="flex gap-8 text-black pt-6 font-poppins">
-          <Button variant="outline" onClick={shuffleTiles}>
+        <div className='flex gap-8 text-black pt-6 font-poppins'>
+          <Button variant='outline' onClick={shuffleTiles}>
             Reset
           </Button>
-          <Button variant="outline" onClick={handlePlayPause}>
-            {isSolved
-              ? "New Game"
-              : isPlaying
-              ? "Pause"
-              : "Play"}
+          <Button variant='outline' onClick={handlePlayPause}>
+            {isSolved ? "New Game" : isPlaying ? "Pause" : "Play"}
           </Button>
-          <Button variant="outline" onClick={() => setImage(!image)}>
+          <Button variant='outline' onClick={() => setImage(!image)}>
             {image ? "Close" : "Original"}
           </Button>
         </div>
 
         {/* Side Menu */}
         <Sheet>
-          <SheetTrigger className="absolute right-4 text-white top-4">
+          <SheetTrigger className='absolute right-4 text-white top-4'>
             <Menu size={40} />
           </SheetTrigger>
-          <SheetContent>
-            <div className="flex flex-col gap-10 h-full">
+          <SheetContent className='overflow-scroll'>
+            <div className='flex flex-col gap-10 h-full'>
               {/* Community Fan Arts Section */}
-              <div className="flex flex-col gap-6">
-                <div className="font-anton font-bold text-2xl pt-8">
+              <div className='flex flex-col gap-6'>
+                <div className='font-anton font-bold text-2xl pt-8'>
                   PLAY WITH COMMUNITY FAN ARTS
                 </div>
-                <div className="flex justify-center">
+                <div className='flex justify-center'>
                   <Carousel
                     plugins={[
                       Autoplay({
@@ -313,22 +492,33 @@ export default function Home() {
                       }),
                     ]}
                     opts={{ align: "start" }}
-                    className="w-[80%]"
+                    className='w-[80%]'
                   >
                     <CarouselContent>
-                      {Array.from({ length: 10 }).map((_, index) => (
-                        <CarouselItem key={index} className="md:basis-1/2 lg:basis-1/3">
-                          <div className="p-1">
-                            <Card>
-                              <CardContent className="flex aspect-square items-center justify-center p-6">
-                                <span className="text-3xl font-semibold">
-                                  {index + 1}
-                                </span>
-                              </CardContent>
-                            </Card>
-                          </div>
-                        </CarouselItem>
-                      ))}
+                      {communityImages.length > 0 ? (
+                        communityImages.map((imageUrl, index) => (
+                          <CarouselItem
+                            key={index}
+                            className='md:basis-1/2 lg:basis-1/3'
+                          >
+                            <div className='p-1'>
+                              <Card>
+                                <CardContent className='flex items-center justify-center p-0'>
+                                  <Image
+                                    src={imageUrl}
+                                    alt={`Community image ${index}`}
+                                    width={300}
+                                    height={400}
+                                    className='object-cover'
+                                  />
+                                </CardContent>
+                              </Card>
+                            </div>
+                          </CarouselItem>
+                        ))
+                      ) : (
+                        <div className='text-white'>No images yet.</div>
+                      )}
                     </CarouselContent>
                     <CarouselPrevious />
                     <CarouselNext />
@@ -337,30 +527,53 @@ export default function Home() {
               </div>
 
               {/* Upload Section */}
-              <div className="flex flex-col gap-2">
-                <div className="font-anton font-bold text-2xl">
+              <div className='flex flex-col gap-2'>
+                <div className='font-anton font-bold text-2xl'>
                   OR PLAY WITH YOURS
                 </div>
-                <Button variant="outline" className="self-start bg-black text-white">
-                  <ImageUp /> Upload
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type='file'
+                  accept='image/*'
+                  onChange={handleFileChange}
+                  style={{ display: "none" }}
+                />
+                <Button
+                  variant='outline'
+                  className='self-start bg-black text-white'
+                  onClick={handleUploadButtonClick}
+                  disabled={isUploading}
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className='animate-spin' /> Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <ImageUp /> Upload
+                    </>
+                  )}
                 </Button>
               </div>
 
               {/* Leaderboard Section */}
               <div>
-                <div className="font-anton font-bold text-3xl">LEADERBOARD</div>
+                <div className='font-anton font-bold text-3xl'>LEADERBOARD</div>
                 <div>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[100px]">Name</TableHead>
+                        <TableHead className='w-[100px]'>Name</TableHead>
                         <TableHead>Score</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {leaderboard?.map((lb) => (
                         <TableRow key={lb?.id}>
-                          <TableCell className="font-medium">{lb?.name}</TableCell>
+                          <TableCell className='font-medium'>
+                            {lb?.name}
+                          </TableCell>
                           <TableCell>{lb?.score}</TableCell>
                         </TableRow>
                       ))}
@@ -374,36 +587,37 @@ export default function Home() {
 
         {/* Success Modal */}
         {isSolved && showModal && (
-          <div className="text-white flex flex-col bg-black font-poppins rounded w-[300px] h-[300px] absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 z-10">
+          <div className='text-white flex flex-col bg-black font-poppins rounded w-[300px] h-[300px] absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 z-10'>
             <Button
-              className="absolute right-2 bg-black top-2 w-4"
+              className='absolute right-2 bg-black top-2 w-4'
               onClick={handleModalCancel}
             >
               <SquareX size={10} />
             </Button>
-            <div className="flex flex-col gap-2">
-              <div className="text-xl font-semibold">Congratulations 🎊</div>
-              <div className="text-xs text-gray-500">
+            <div className='flex flex-col gap-2'>
+              <div className='text-xl font-semibold'>Congratulations 🎊</div>
+              <div className='text-xs text-gray-500'>
                 You solved the puzzle in {timeElapsed} sec with {moves} moves
               </div>
             </div>
-            <div className="text-gray-700 text-sm">
+            <div className='text-gray-700 text-sm'>
               You scored {scoreData.score === "" ? 0 : scoreData.score}
             </div>
-            <div className="my-3 text-xs">
-              Type in your name and upload your score to see where you rank among other finalbosu community members
+            <div className='my-3 text-xs'>
+              Type in your name and upload your score to see where you rank
+              among other finalbosu community members
             </div>
-            <div className="flex flex-col gap-1">
-              <label htmlFor="name" className="text-sm font-bold">
+            <div className='flex flex-col gap-1'>
+              <label htmlFor='name' className='text-sm font-bold'>
                 Name{" "}
-                <span className="text-gray-700 text-xs font-thin">
+                <span className='text-gray-700 text-xs font-thin'>
                   (twitter username)
                 </span>
               </label>
               <input
-                className="bg-transparent border rounded border-gray-700 outline-none p-2 text-xs"
-                type="text"
-                name="name"
+                className='bg-transparent border rounded border-gray-700 outline-none p-2 text-xs'
+                type='text'
+                name='name'
                 value={scoreData.name}
                 onChange={handlechange}
               />
@@ -412,12 +626,14 @@ export default function Home() {
               className={`self-end mt-auto ${
                 uploadbutton === "success" ? "bg-green-500" : "bg-auto"
               }`}
-              disabled={uploadbutton === "success" || uploadbutton === "loading"}
+              disabled={
+                uploadbutton === "success" || uploadbutton === "loading"
+              }
               onClick={() => saveScore(scoreData.name, scoreData.score)}
             >
               {uploadbutton === "loading" ? (
                 <>
-                  <Loader2 className="animate-spin" /> Please wait
+                  <Loader2 className='animate-spin' /> Please wait
                 </>
               ) : uploadbutton === "idle" ? (
                 <>Upload</>
