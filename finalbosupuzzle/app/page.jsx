@@ -48,6 +48,9 @@ export default function Home() {
   const fileInputRef = useRef(null);
   // NEW: State to hold the uploader's name for image uploads
   const [uploadImageName, setUploadImageName] = useState("");
+  // NEW: State to store the current puzzle image.
+  // When no community image is chosen or uploaded, it defaults to the local asset.
+  const [puzzleImage, setPuzzleImage] = useState("/puzzle-image.jpg");
 
   // Image and container dimensions for the puzzle game
   const imageWidth = 600;
@@ -133,8 +136,6 @@ export default function Home() {
   // -------------------------------
 
   // NEW: Fetch the list of community images (with uploader names) from Supabase.
-  // This assumes you have created a table "community_images" with columns such as
-  // uploader_name, file_name, and created_at.
   const fetchCommunityImages = async () => {
     try {
       console.log("Fetching community images...");
@@ -183,34 +184,28 @@ export default function Home() {
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        // Use the native Image constructor via window.Image
         const img = new window.Image();
         img.onload = () => {
-          // Determine cropping dimensions (center crop)
           const targetWidth = 300;
           const targetHeight = 400;
-          const targetRatio = targetWidth / targetHeight; // 0.75
+          const targetRatio = targetWidth / targetHeight;
           let cropWidth, cropHeight, offsetX, offsetY;
           const imageRatio = img.width / img.height;
           if (imageRatio > targetRatio) {
-            // Image is wider than desired ratio; crop the width
             cropHeight = img.height;
             cropWidth = img.height * targetRatio;
             offsetX = (img.width - cropWidth) / 2;
             offsetY = 0;
           } else {
-            // Image is taller than desired ratio; crop the height
             cropWidth = img.width;
             cropHeight = img.width / targetRatio;
             offsetX = 0;
             offsetY = (img.height - cropHeight) / 2;
           }
-          // Create a canvas with the target dimensions
           const canvas = document.createElement("canvas");
           canvas.width = targetWidth;
           canvas.height = targetHeight;
           const ctx = canvas.getContext("2d");
-          // Draw the cropped and scaled image
           ctx.drawImage(
             img,
             offsetX,
@@ -242,7 +237,8 @@ export default function Home() {
     });
 
   // NEW: Function to upload the (cropped) image to Supabase Storage along with the uploader's name.
-  // After a successful upload, insert a record into the "community_images" table.
+  // After a successful upload, we update the community images list and also update the puzzle image
+  // so that the user plays with their newly uploaded image.
   const uploadImage = async (file, uploaderName) => {
     try {
       setIsUploading(true);
@@ -267,6 +263,16 @@ export default function Home() {
         } else {
           // After a successful upload and record insertion, refresh the list of images.
           fetchCommunityImages();
+          // Retrieve the public URL of the uploaded image.
+          const { data: publicUrlData, error: publicUrlError } =
+            supabase.storage.from("community-images").getPublicUrl(fileName);
+          if (publicUrlError) {
+            console.error("Error generating public URL:", publicUrlError.message);
+          } else {
+            // Set the uploaded image as the puzzle image and reset the board.
+            setPuzzleImage(publicUrlData.publicUrl);
+            shuffleTiles();
+          }
         }
       }
     } catch (error) {
@@ -277,7 +283,6 @@ export default function Home() {
   };
 
   // NEW: Handler for when a file is selected via the hidden input.
-  // It checks that a name has been entered before calling uploadImage.
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -295,6 +300,12 @@ export default function Home() {
   // NEW: Handler to trigger the file input click.
   const handleUploadButtonClick = () => {
     fileInputRef.current?.click();
+  };
+
+  // NEW: When a community image is clicked, update the puzzle image and reset the game.
+  const handleCommunityImageClick = (url) => {
+    setPuzzleImage(url);
+    shuffleTiles();
   };
 
   // -------------------------------
@@ -384,7 +395,6 @@ export default function Home() {
   };
 
   // Play/Pause button handler.
-  // If the puzzle is solved, clicking "New Game" (i.e. Play) will reset the board.
   const handlePlayPause = () => {
     if (isSolved) {
       shuffleTiles();
@@ -394,11 +404,10 @@ export default function Home() {
     }
   };
 
-  // When the win modal is cancelled, just hide the modal and leave the board solved.
+  // When the win modal is cancelled, just hide the modal.
   const handleModalCancel = () => {
     setShowModal(false);
   };
-  console.log(communityImages);
 
   return (
     <div className="relative min-h-screen font-poppins text-[#e61949] bg-black bg-bluenoise-layer flex justify-center items-center">
@@ -424,7 +433,7 @@ export default function Home() {
         >
           {/* Original Image Overlay */}
           <Image
-            src="/puzzle-image.jpg"
+            src={puzzleImage}
             fill
             alt="Puzzle overlay"
             className={`z-10 ${image ? "block" : "hidden"}`}
@@ -449,7 +458,7 @@ export default function Home() {
                   left: `${left}px`,
                   top: `${top}px`,
                   backgroundImage:
-                    tile !== totalTiles - 1 ? "url('/puzzle-image.jpg')" : "",
+                    tile !== totalTiles - 1 ? `url(${puzzleImage})` : "",
                   backgroundSize: `${gridSize * 100}% ${gridSize * 100}%`,
                   backgroundPosition: `${
                     (tile % gridSize) * (100 / (gridSize - 1))
@@ -502,9 +511,12 @@ export default function Home() {
                             key={index}
                             className="md:basis-1/2 lg:basis-1/3"
                           >
-                            <div className="p-1">
-                              <div className='border-none rounded-none'>
-                                <div className="flex flex-col gap-1 ">
+                            <div
+                              className="p-1 cursor-pointer"
+                              onClick={() => handleCommunityImageClick(url)}
+                            >
+                              <div className="border-none rounded-none">
+                                <div className="flex flex-col gap-1">
                                   <Image
                                     src={url}
                                     alt={`Community image ${index}`}
@@ -513,7 +525,7 @@ export default function Home() {
                                     className="object-cover"
                                   />
                                   {uploaderName && (
-                                    <div className="text-center font-semibold lg:font-medium text-lg lg:text-xs ">
+                                    <div className="text-center font-semibold text-lg lg:text-xs">
                                       {uploaderName}
                                     </div>
                                   )}
@@ -537,7 +549,6 @@ export default function Home() {
                 <div className="font-anton font-bold text-2xl">
                   OR PLAY WITH YOURS
                 </div>
-                {/* NEW: Input for uploader's name */}
                 <input
                   type="text"
                   placeholder="Enter your twitter username"
@@ -545,7 +556,6 @@ export default function Home() {
                   onChange={(e) => setUploadImageName(e.target.value)}
                   className="bg-transparent border rounded border-gray-700 outline-none p-2 text-xs text-black"
                 />
-                {/* Hidden file input */}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -661,82 +671,3 @@ export default function Home() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
