@@ -441,7 +441,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen font-poppins text-[#e61949] bg-black bg-bluenoise-layer flex justify-center items-center">
+    <div className="relative min-h-screen font-poppins text-[#e61949] bg-black bg-repeat bg-bluenoise-layer flex justify-center items-center">
       {/* Main container */}
       <div className="flex flex-col items-center justify-center">
         {/* Title Section */}
@@ -511,7 +511,7 @@ export default function Home() {
         {/* Control Buttons */}
         <div className="flex gap-8 text-black pt-6 font-poppins">
           <Button variant="outline" onClick={shuffleTiles}>
-            Reset
+            shuffle
           </Button>
           <Button variant="outline" onClick={handlePlayPause}>
             {isSolved ? "New Game" : isPlaying ? "Pause" : "Play"}
