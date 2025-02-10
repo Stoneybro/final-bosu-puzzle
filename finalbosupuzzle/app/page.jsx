@@ -513,7 +513,7 @@ export default function Home() {
                                     className="object-cover"
                                   />
                                   {uploaderName && (
-                                    <div className="text-center font-semibold text-lg ">
+                                    <div className="text-center font-semibold lg:font-medium text-lg lg:text-xs ">
                                       {uploaderName}
                                     </div>
                                   )}
