@@ -23,6 +23,26 @@ import {
 } from "@/components/ui/table";
 import supabase from "@/client/Supabase";
 
+/**
+ * A wrapper around Next.js Image that shows a spinner until the image is loaded.
+ */
+const ImageWithLoader = (props) => {
+  const [isLoading, setIsLoading] = useState(true);
+  return (
+    <div className="relative">
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Loader2 className="animate-spin" size={24} />
+        </div>
+      )}
+      <Image
+        {...props}
+        onLoadingComplete={() => setIsLoading(false)}
+      />
+    </div>
+  );
+};
+
 export default function Home() {
   // Constants and state variables
   const gridSize = 3;
@@ -51,6 +71,8 @@ export default function Home() {
   // NEW: State to store the current puzzle image.
   // When no community image is chosen or uploaded, it defaults to the local asset.
   const [puzzleImage, setPuzzleImage] = useState("/puzzle-image.jpg");
+  // NEW: State to determine if the puzzle image (used as background) has loaded
+  const [puzzleImageLoaded, setPuzzleImageLoaded] = useState(false);
 
   // Image and container dimensions for the puzzle game
   const imageWidth = 600;
@@ -68,6 +90,15 @@ export default function Home() {
     let score = maxScore - (W_m * moves + W_t * time);
     return Math.max(0, Math.min(score, maxScore));
   }
+
+  // Preload the main puzzle image (used in tiles’ background)
+  useEffect(() => {
+    setPuzzleImageLoaded(false);
+    const img = new window.Image();
+    img.src = puzzleImage;
+    img.onload = () => setPuzzleImageLoaded(true);
+    img.onerror = () => setPuzzleImageLoaded(true);
+  }, [puzzleImage]);
 
   // Function to shuffle tiles and reset the game (starting paused)
   const shuffleTiles = () => {
@@ -143,7 +174,7 @@ export default function Home() {
         .from("community_images")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(3);
+        .limit(10);
       if (error) {
         console.error("Error fetching community images:", error.message);
         return;
@@ -431,10 +462,18 @@ export default function Home() {
             height: `${containerHeight}px`,
           }}
         >
+          {/* Optional: Display a loader until the puzzle image is loaded */}
+          {!puzzleImageLoaded && (
+            <div className="absolute inset-0 flex justify-center items-center z-20">
+              <Loader2 className="animate-spin" size={40} />
+            </div>
+          )}
+
           {/* Original Image Overlay */}
           <Image
             src={puzzleImage}
             fill
+            unoptimized
             alt="Puzzle overlay"
             className={`z-10 ${image ? "block" : "hidden"}`}
           />
@@ -517,7 +556,8 @@ export default function Home() {
                             >
                               <div className="border-none rounded-none">
                                 <div className="flex flex-col gap-1">
-                                  <Image
+                                  {/* Using our new ImageWithLoader here */}
+                                  <ImageWithLoader
                                     src={url}
                                     alt={`Community image ${index}`}
                                     width={300}
