@@ -22,10 +22,82 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import supabase from "@/client/Supabase";
+import { motion, AnimatePresence } from "framer-motion";
 
-/**
- * A wrapper around Next.js Image that shows a spinner until the image is loaded.
- */
+/* ===========================================================
+   Preloader Component (No glitch – two text phases then exit)
+============================================================ */
+const Preloader = ({ onComplete }) => {
+  // phase 1: show "FINALBOSU", phase 2: show "AGAINST ALL ODDS",
+  // phase 3: animate the overlay exit.
+  const [phase, setPhase] = useState(1);
+  // Controls whether the text is visible (for fade‐in/out)
+  const [showText, setShowText] = useState(true);
+
+  useEffect(() => {
+    // Phase 1: "FINALBOSU" appears immediately.
+    // After 1.5 seconds, fade it out.
+    const timer1 = setTimeout(() => {
+      setShowText(false);
+    }, 1500);
+
+    // After exit (0.5s later), switch to phase 2 and show "#AGAINST ALL ODDS"
+    const timer2 = setTimeout(() => {
+      setPhase(2);
+      setShowText(true);
+    }, 2500);
+
+    // Keep phase 2 visible for 2 seconds, then trigger phase 3 (exit)
+    const timer3 = setTimeout(() => {
+      setPhase(3);
+    }, 4500);
+
+    // After 1 second of sliding out the overlay, signal completion.
+    const timer4 = setTimeout(() => {
+      onComplete();
+    }, 5500);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+      clearTimeout(timer4);
+    };
+  }, [onComplete]);
+
+  // Determine the text message based on the phase.
+  const message = phase === 1 ? "FINALBOSU" : "#AGAINST ALL ODDS";
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 flex items-center justify-center bg-black z-50"
+        // When phase === 3, fade out the entire overlay.
+        animate={phase === 3 ? { opacity: 0 } : { opacity: 1 }}
+        transition={{ duration: phase === 3 ? 1 : 0 }}
+      >
+        <AnimatePresence mode="wait">
+          {showText && (
+            <motion.span
+              key={message}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5 }}
+              className="text-[#e61949] text-5xl font-anton lg:text-9xl font-bold text-center"
+            >
+              {message}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+/* =================================================
+   ImageWithLoader Component (used in your carousel)
+================================================== */
 const ImageWithLoader = (props) => {
   const [isLoading, setIsLoading] = useState(true);
   return (
@@ -35,16 +107,19 @@ const ImageWithLoader = (props) => {
           <Loader2 className="animate-spin" size={24} />
         </div>
       )}
-      <Image
-        {...props}
-        onLoadingComplete={() => setIsLoading(false)}
-      />
+      <Image {...props} onLoadingComplete={() => setIsLoading(false)} />
     </div>
   );
 };
 
+/* ==================================================
+   Main Page Component (Sliding Puzzle Game)
+=================================================== */
 export default function Home() {
-  // Constants and state variables
+  // Preloader state – the overlay is shown until it signals completion.
+  const [preloaderDone, setPreloaderDone] = useState(false);
+
+  // Game and UI states
   const gridSize = 3;
   const totalTiles = gridSize * gridSize;
   const [tiles, setTiles] = useState([]);
@@ -52,29 +127,21 @@ export default function Home() {
   const [isSolved, setIsSolved] = useState(false);
   const [moves, setMoves] = useState(0);
   const [timeElapsed, setTimeElapsed] = useState(0);
-  // New state: game starts paused (isPlaying=false means paused)
   const [isPlaying, setIsPlaying] = useState(false);
-  const [image, setImage] = useState(false);
+  // Set to true so that on initial load the complete puzzle image (overlay) is shown.
+  const [image, setImage] = useState(true);
   const [leaderboard, setLeaderboard] = useState([]);
   const [uploadbutton, setuploadbutton] = useState("idle");
   const [scoreData, setScoreData] = useState({ name: "", score: "" });
-  // New state for the win modal
   const [showModal, setShowModal] = useState(false);
-  // NEW: State to hold community images (each image is an object with a URL and uploader name)
   const [communityImages, setCommunityImages] = useState([]);
-  // NEW: State to indicate upload progress
   const [isUploading, setIsUploading] = useState(false);
-  // NEW: A ref to our hidden file input
   const fileInputRef = useRef(null);
-  // NEW: State to hold the uploader's name for image uploads
   const [uploadImageName, setUploadImageName] = useState("");
-  // NEW: State to store the current puzzle image.
-  // When no community image is chosen or uploaded, it defaults to the local asset.
   const [puzzleImage, setPuzzleImage] = useState("/puzzle-image.jpg");
-  // NEW: State to determine if the puzzle image (used as background) has loaded
   const [puzzleImageLoaded, setPuzzleImageLoaded] = useState(false);
 
-  // Image and container dimensions for the puzzle game
+  // Dimensions for the puzzle game
   const imageWidth = 600;
   const imageHeight = 800;
   const aspectRatio = imageWidth / imageHeight;
@@ -91,7 +158,7 @@ export default function Home() {
     return Math.max(0, Math.min(score, maxScore));
   }
 
-  // Preload the main puzzle image (used in tiles’ background)
+  // Preload the main puzzle image.
   useEffect(() => {
     setPuzzleImageLoaded(false);
     const img = new window.Image();
@@ -100,7 +167,6 @@ export default function Home() {
     img.onerror = () => setPuzzleImageLoaded(true);
   }, [puzzleImage]);
 
-  // Function to shuffle tiles and reset the game (starting paused)
   const shuffleTiles = () => {
     setIsSolved(false);
     let shuffled;
@@ -115,12 +181,10 @@ export default function Home() {
     setEmptyIndex(shuffled.indexOf(totalTiles - 1));
     setMoves(0);
     setTimeElapsed(0);
-    // Reset to paused state—user must click Play
     setIsPlaying(false);
     setShowModal(false);
   };
 
-  // On load, shuffle the puzzle but keep it paused
   useEffect(() => {
     const initialTiles = Array.from({ length: totalTiles }, (_, i) => i);
     let shuffled = [...initialTiles];
@@ -135,7 +199,6 @@ export default function Home() {
     setIsPlaying(false);
   }, []);
 
-  // Timer: only runs when the game is playing
   useEffect(() => {
     let timer;
     if (isPlaying) {
@@ -162,11 +225,7 @@ export default function Home() {
     fetchLeaderboard();
   }, []);
 
-  // -------------------------------
-  // NEW: Functions to handle community image upload and fetching
-  // -------------------------------
-
-  // NEW: Fetch the list of community images (with uploader names) from Supabase.
+  // Fetch community images from Supabase.
   const fetchCommunityImages = async () => {
     try {
       console.log("Fetching community images...");
@@ -184,7 +243,6 @@ export default function Home() {
         setCommunityImages([]);
         return;
       }
-      // For each record, generate a public URL from storage using the stored file_name.
       const images = await Promise.all(
         data.map(async (row) => {
           const { data: publicUrlData, error: publicUrlError } = supabase.storage
@@ -205,12 +263,10 @@ export default function Home() {
     }
   };
 
-  // Call fetchCommunityImages on mount so the carousel shows images on page load
   useEffect(() => {
     fetchCommunityImages();
   }, []);
 
-  // Function to crop an image file to 300x400 (center crop)
   const cropImage = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -267,14 +323,10 @@ export default function Home() {
       reader.readAsDataURL(file);
     });
 
-  // NEW: Function to upload the (cropped) image to Supabase Storage along with the uploader's name.
-  // After a successful upload, we update the community images list and also update the puzzle image
-  // so that the user plays with their newly uploaded image.
   const uploadImage = async (file, uploaderName) => {
     try {
       setIsUploading(true);
       const croppedBlob = await cropImage(file);
-      // Create a unique filename (using timestamp)
       const fileExt = file.name.split(".").pop();
       const fileName = `${Date.now()}.${fileExt}`;
       const { data, error } = await supabase.storage
@@ -285,22 +337,18 @@ export default function Home() {
       if (error) {
         console.error("Error uploading image:", error.message);
       } else {
-        // Insert a record into the "community_images" table with the uploader's name and fileName.
         const { data: insertData, error: insertError } = await supabase
           .from("community_images")
           .insert([{ uploader_name: uploaderName, file_name: fileName }]);
         if (insertError) {
           console.error("Error saving image metadata:", insertError.message);
         } else {
-          // After a successful upload and record insertion, refresh the list of images.
           fetchCommunityImages();
-          // Retrieve the public URL of the uploaded image.
           const { data: publicUrlData, error: publicUrlError } =
             supabase.storage.from("community-images").getPublicUrl(fileName);
           if (publicUrlError) {
             console.error("Error generating public URL:", publicUrlError.message);
           } else {
-            // Set the uploaded image as the puzzle image and reset the board.
             setPuzzleImage(publicUrlData.publicUrl);
             shuffleTiles();
           }
@@ -313,7 +361,6 @@ export default function Home() {
     }
   };
 
-  // NEW: Handler for when a file is selected via the hidden input.
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -324,26 +371,18 @@ export default function Home() {
       await uploadImage(file, uploadImageName);
       setUploadImageName("");
     }
-    // Reset the input value so the same file can be re-uploaded if needed.
     e.target.value = "";
   };
 
-  // NEW: Handler to trigger the file input click.
   const handleUploadButtonClick = () => {
     fileInputRef.current?.click();
   };
 
-  // NEW: When a community image is clicked, update the puzzle image and reset the game.
   const handleCommunityImageClick = (url) => {
     setPuzzleImage(url);
     shuffleTiles();
   };
 
-  // -------------------------------
-  // End of upload functions
-  // -------------------------------
-
-  // Check if the puzzle is solvable
   const isSolvable = (tilesArray) => {
     let inversions = 0;
     for (let i = 0; i < tilesArray.length - 1; i++) {
@@ -365,7 +404,6 @@ export default function Home() {
     }
   };
 
-  // When the puzzle is solved, pause the game and show the modal.
   useEffect(() => {
     if (moves > 0 && tiles.every((tile, index) => tile === index)) {
       setIsSolved(true);
@@ -378,7 +416,6 @@ export default function Home() {
     }
   }, [tiles]);
 
-  // Handle tile clicks only if the game is playing and unsolved.
   const handleTileClick = (index) => {
     if (!isPlaying || isSolved) return;
     const validMoves = getValidMoves(emptyIndex);
@@ -394,7 +431,6 @@ export default function Home() {
     }
   };
 
-  // Determine valid moves for the empty tile
   const getValidMoves = (emptyIdx) => {
     const row = Math.floor(emptyIdx / gridSize);
     const col = emptyIdx % gridSize;
@@ -425,36 +461,35 @@ export default function Home() {
     });
   };
 
-  // Play/Pause button handler.
+  // Modified handlePlayPause: when starting the game, hide the overlay.
   const handlePlayPause = () => {
     if (isSolved) {
       shuffleTiles();
       setIsPlaying(true);
     } else {
-      setIsPlaying((prev) => !prev);
+      if (!isPlaying) {
+        setImage(false); // Hide the overlay puzzle image
+        setIsPlaying(true);
+      } else {
+        setIsPlaying(false);
+      }
     }
   };
 
-  // When the win modal is cancelled, just hide the modal.
   const handleModalCancel = () => {
     setShowModal(false);
   };
 
   return (
-    <div className="relative min-h-screen font-poppins text-[#e61949] bg-black bg-repeat bg-bluenoise-layer flex justify-center items-center">
-      {/* Main container */}
+    <div className="relative min-h-screen font-poppins text-[#e61949] bg-black bg-cover bg-bluenoise-layer flex justify-center items-center">
+      {/* Main UI is rendered regardless so its background is visible */}
       <div className="flex flex-col items-center justify-center">
-        {/* Title Section */}
         <div className="text-7xl font-anton">FINALBOSU</div>
         <h1 className="text-sm font-poppins italic">Sliding Puzzle Game</h1>
-
-        {/* Stats Section */}
         <div className="flex justify-between w-64 mb-4 font-poppins">
           <p className="text-sm">Moves: {moves}</p>
           <p className="text-sm">Time: {timeElapsed}s</p>
         </div>
-
-        {/* Puzzle Grid */}
         <div
           className="relative bg-gray-800 border overflow-hidden border-white"
           style={{
@@ -462,14 +497,12 @@ export default function Home() {
             height: `${containerHeight}px`,
           }}
         >
-          {/* Optional: Display a loader until the puzzle image is loaded */}
           {!puzzleImageLoaded && (
             <div className="absolute inset-0 flex justify-center items-center z-20">
               <Loader2 className="animate-spin" size={40} />
             </div>
           )}
-
-          {/* Original Image Overlay */}
+          {/* Puzzle overlay image */}
           <Image
             src={puzzleImage}
             fill
@@ -477,8 +510,6 @@ export default function Home() {
             alt="Puzzle overlay"
             className={`z-10 ${image ? "block" : "hidden"}`}
           />
-
-          {/* Tiles */}
           {tiles.map((tile, index) => {
             const left = (index % gridSize) * tileWidth;
             const top = Math.floor(index / gridSize) * tileHeight;
@@ -507,8 +538,6 @@ export default function Home() {
             );
           })}
         </div>
-
-        {/* Control Buttons */}
         <div className="flex gap-8 text-black pt-6 font-poppins">
           <Button variant="outline" onClick={shuffleTiles}>
             shuffle
@@ -520,15 +549,12 @@ export default function Home() {
             {image ? "Close" : "Original"}
           </Button>
         </div>
-
-        {/* Side Menu */}
         <Sheet>
           <SheetTrigger className="absolute right-4 text-white top-4">
             <Menu size={40} />
           </SheetTrigger>
           <SheetContent className="overflow-scroll">
             <div className="flex flex-col gap-10 h-full">
-              {/* Community Fan Arts Section */}
               <div className="flex flex-col gap-6">
                 <div className="font-anton font-bold text-2xl pt-8">
                   PLAY WITH COMMUNITY FAN ARTS
@@ -556,7 +582,6 @@ export default function Home() {
                             >
                               <div className="border-none rounded-none">
                                 <div className="flex flex-col gap-1">
-                                  {/* Using our new ImageWithLoader here */}
                                   <ImageWithLoader
                                     src={url}
                                     alt={`Community image ${index}`}
@@ -583,8 +608,6 @@ export default function Home() {
                   </Carousel>
                 </div>
               </div>
-
-              {/* Upload Section */}
               <div className="flex flex-col gap-2">
                 <div className="font-anton font-bold text-2xl">
                   OR PLAY WITH YOURS
@@ -620,8 +643,6 @@ export default function Home() {
                   )}
                 </Button>
               </div>
-
-              {/* Leaderboard Section */}
               <div>
                 <div className="font-anton font-bold text-3xl">LEADERBOARD</div>
                 <div>
@@ -648,8 +669,6 @@ export default function Home() {
             </div>
           </SheetContent>
         </Sheet>
-
-        {/* Success Modal */}
         {isSolved && showModal && (
           <div className="text-white flex flex-col bg-black font-poppins rounded w-[300px] h-[300px] absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 z-10">
             <Button
@@ -668,8 +687,7 @@ export default function Home() {
               You scored {scoreData.score === "" ? 0 : scoreData.score}
             </div>
             <div className="my-3 text-xs">
-              Type in your name and upload your score to see where you rank
-              among other finalbosu community members
+              Type in your name and upload your score to see where you rank among other finalbosu community members
             </div>
             <div className="flex flex-col gap-1">
               <label htmlFor="name" className="text-sm font-bold">
@@ -690,9 +708,7 @@ export default function Home() {
               className={`self-end mt-auto ${
                 uploadbutton === "success" ? "bg-green-500" : "bg-auto"
               }`}
-              disabled={
-                uploadbutton === "success" || uploadbutton === "loading"
-              }
+              disabled={uploadbutton === "success" || uploadbutton === "loading"}
               onClick={() => saveScore(scoreData.name, scoreData.score)}
             >
               {uploadbutton === "loading" ? (
@@ -708,6 +724,8 @@ export default function Home() {
           </div>
         )}
       </div>
+      {/* Preloader overlay */}
+      {!preloaderDone && <Preloader onComplete={() => setPreloaderDone(true)} />}
     </div>
   );
 }
