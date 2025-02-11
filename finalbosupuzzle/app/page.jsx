@@ -84,7 +84,7 @@ const Preloader = ({ onComplete }) => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.5 }}
-              className="text-[#e61949] text-5xl font-anton lg:text-9xl font-bold text-center"
+              className="text-[#e61949] text-[42px] font-anton lg:text-9xl font-bold text-center"
             >
               {message}
             </motion.span>
@@ -481,7 +481,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen font-poppins text-[#e61949] bg-black bg-cover bg-bluenoise-layer flex justify-center items-center">
+    <div className="relative min-h-screen font-poppins text-[#e61949] bg-black bg-noise bg-repeat bg-bluenoise-layer flex justify-center items-center">
       {/* Main UI is rendered regardless so its background is visible */}
       <div className="flex flex-col items-center justify-center">
         <div className="text-7xl font-anton">FINALBOSU</div>
