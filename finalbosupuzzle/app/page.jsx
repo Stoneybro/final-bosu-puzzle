@@ -667,6 +667,9 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            <div className="pt-16">
+              check out our first <a className="text-red-500" href="https://finalbosu-pink.vercel.app/"> finalbosu project</a>
+            </div>
           </SheetContent>
         </Sheet>
         {isSolved && showModal && (
