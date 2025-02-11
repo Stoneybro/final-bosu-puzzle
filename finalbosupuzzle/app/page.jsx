@@ -481,7 +481,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen font-poppins text-[#e61949] bg-black bg-noise bg-repeat bg-bluenoise-layer flex justify-center items-center">
+    <div className="relative min-h-screen font-poppins text-[#e61949] bg-black bg-cover bg-center bg-no-repeat bg-bluenoise-layer flex justify-center items-center">
       {/* Main UI is rendered regardless so its background is visible */}
       <div className="flex flex-col items-center justify-center">
         <div className="text-7xl font-anton">FINALBOSU</div>
