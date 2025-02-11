@@ -13,7 +13,7 @@ export default {
 		  },
 		  backgroundSize: {
 			// Define a custom tile size for the noise pattern.
-			'noise': '100px 100px', // Adjust this value as needed
+			'noise': '600px 600px', // Adjust this value as needed
 		  },
   		colors: {
   			background: 'hsl(var(--background))',
